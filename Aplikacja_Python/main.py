@@ -1,10 +1,18 @@
 import math
+import tkinter
+
+from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
+from matplotlib.backend_bases import key_press_handler
+from matplotlib.figure import Figure
+import numpy as np
 from tkinter import *
 
 
 def is_number(string):
+    if string == ".":
+        return False
     for letter in string:
-        if not letter.isdigit() and not letter == ".":
+        if not letter.isdigit() and letter != ".":
             return False
     return True
 
@@ -117,6 +125,19 @@ text4.set("0")
 res3 = Label(fr1_m2, textvariable=text4)
 res3.pack(expand=True)
 
+fig = Figure(figsize=(5, 4), dpi=100)
+t = np.arange(-3, 3, .01)
+fig.add_subplot(111).plot(t, np.power(t,2))
+
+canvas = FigureCanvasTkAgg(fig, master=root)  # A tk.DrawingArea.
+canvas.draw()
+canvas.get_tk_widget().grid(column=2, row=0, padx=15)
+
+"""
+toolbarFrame = Frame(master=root)
+toolbarFrame.grid(row=1,column=4)
+toolbar = NavigationToolbar2Tk(canvas, toolbarFrame)
+"""
 root.mainloop()
 
 """
