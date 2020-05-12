@@ -5,3 +5,6 @@ Pobiera od uzytkownika informacje tj. masa, szerokość opony, profil opony, śr
 
 alpha_1.1:
 Do aplikacji dodano wyświetlanie wykresu z użyciem biblioteki matplotlib oraz zintegrowano go z okienkiem głównym. Docelowo wykres ma ukazywać moc w KM oraz moment obrotowy w Nm.
+
+alpha_2.1:
+Dodano możliwość otwarcia pliku (za pomocą przycisku "przeglądaj"), plik można przeładować (załadować zmiany bez ponownego wybierania pliku) za pomocą przycisku "Przeładuj". Po załadowaniu poprawnego pliku z danymi aplikacja rysuje wykres rpm/t
