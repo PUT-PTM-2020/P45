@@ -46,29 +46,48 @@ def get_file():
     load_data()
 
 
-danex = np.array([])
-daney = np.array([])
+class ChartDrawer:
+
+    def __init__(self, datax, datay):
+        self.datax = datax
+        self.datay = datay
+        self.figure = Figure(figsize=(8, 8), dpi=60)
+        self.axes = self.figure.add_subplot(111)
+        self.im = self.axes.plot(self.datax, self.datay, 'r')
+
+    def load(self):
+        try:
+            self.canvas.get_tk_widget().destroy()
+        except:
+            pass
+
+        self.axes.set_ylabel('RPM czujnika', labelpad=15, size=14)
+        self.axes.set_xlabel('czas [ms]', labelpad=15, size=14)
+        self.axes.set_title('Wykres hamowania', pad=25, size=20)
+
+        self.canvas = FigureCanvasTkAgg(self.figure, master=fr1_b)
+        self.canvas.get_tk_widget().pack()
 
 
 def load_data():
     if filename == "":
         return False
-    global danex
-    global daney
+    danex = np.array([])
+    daney = np.array([])
+
     file = open(filename, "r")
     for line in file:
         temp = line.split(";")
         danex = np.append(danex, int(temp[0]))
         daney = np.append(daney, int(temp[1]))
-    global canvas, fig, axis1
-    axis1.clear()
+    global fr1_b
 
-    axis1.set_ylabel('RPM czujnika', labelpad=15, size=14)
-    axis1.set_xlabel('czas [ms]', labelpad=15, size=14)
-    axis1.set_title('Wykres hamowania', pad=25, size=20)
-    axis1.plot(danex, daney, 'r')
+    fr1_b = Frame(root)
+    fr1_b.grid(column=1, row=0)
 
-    canvas.draw()
+    global chart
+    chart = ChartDrawer(danex, daney)
+    chart.load()
 
 
 btn0 = Button(fr1_a1, text="Przeglądaj", command=get_file)
@@ -185,16 +204,43 @@ text4.set("0")
 res3 = Label(fr1_a2_b2, textvariable=text4)
 res3.pack(expand=True)
 
-fig = Figure(figsize=(8, 8), dpi=60)
-axis1 = fig.add_subplot(111)
-axis1.set_ylabel('RPM czujnika', labelpad=15, size=14)
-axis1.set_xlabel('czas [ms]', labelpad=15, size=14)
-axis1.set_title('Wykres hamowania', pad=25, size=20)
+fr1_a2_b3 = Frame(fr1_a2)
+fr1_a2_b3.grid(column=2, row=0, padx=15)
 
-#plot, scatter
-canvas = FigureCanvasTkAgg(fig, master=root)
-canvas.draw()
-canvas.get_tk_widget().grid(column=2, row=0, padx=15)
+lb5 = Label(fr1_a2_b3, text="Początkowa wartość RPM")
+lb5.pack(expand=True)
+ent5 = Entry(fr1_a2_b3, width=width)
+ent5.pack()
+
+lb6 = Label(fr1_a2_b3, text="Końcowa wartość RPM")
+lb6.pack(expand=True)
+ent6 = Entry(fr1_a2_b3, width=width)
+ent6.pack()
+
+fr1_a2_b4 = Frame(fr1_a2)
+fr1_a2_b4.grid(column=3, row=0, padx=15)
+
+res1_t = Label(fr1_a2_b4, text="Konie mechaniczne", font="Verdana 8 bold")
+res1_t.pack(pady=5)
+
+text5 = StringVar()
+text5.set("0")
+res4 = Label(fr1_a2_b4, textvariable=text4)
+res4.pack(expand=True)
+
+res1_t = Label(fr1_a2_b4, text="Moment obrotowy", font="Verdana 8 bold")
+res1_t.pack(pady=5)
+
+text6 = StringVar()
+text6.set("0")
+res5 = Label(fr1_a2_b4, textvariable=text4)
+res5.pack(expand=True)
+
+fr1_b = Frame(root)
+fr1_b.grid(column=1, row=0)
+
+chart = ChartDrawer([], [])
+chart.load()
 
 """
 toolbarFrame = Frame(master=root)
