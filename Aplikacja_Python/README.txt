@@ -13,3 +13,6 @@ alpha_3.1:
 -Dodano możliwość wpisania początkowej oraz końcowej wartości RPM, która posłuży do obliczania mocy pojazdu. 
 -Naprawiono bug związany z przeładowywaniem wykresu.
 -Poprawiono czytelność kodu.
+
+1.0
+-Aplikacja rysuje wykres mocy i rpm oraz momentu obrotowego. Dodatkowo podaje ich wartości. Można uznać tę wersję za oficjalną 1.0
