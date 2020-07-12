@@ -24,6 +24,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ff.h"
+#include "CANSPI.h"
 
 
 /* USER CODE END Includes */
@@ -35,6 +36,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define SD_CS_HIGH()   HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_SET)
+#define SD_CS_LOW()    HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_RESET)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -48,6 +51,7 @@ RTC_HandleTypeDef hrtc;
 SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim4;
+DMA_HandleTypeDef hdma_tim4_ch1;
 
 /* USER CODE BEGIN PV */
 char buffer[256]; //bufor odczytu i zapisu
@@ -67,11 +71,15 @@ uint8_t fileOpen = 0;
 uint32_t rpmCounter = 0;
 
 uint32_t time = 0;
+
+uCAN_MSG txMessage;
+uCAN_MSG rxMessage;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_RTC_Init(void);
 static void MX_TIM4_Init(void);
@@ -80,12 +88,16 @@ char* createNewFilenameTS();
 void createNewFilename(char *filename);
 
 void openFileToWriteRPM(char* filename) {
+	SD_CS_LOW();
 	fresult = f_open(&file, filename, FA_OPEN_ALWAYS | FA_WRITE);
 	fresult = f_lseek(&file, f_size(&file));
+	SD_CS_HIGH();
 }
 
 void closeFileToWriteRPM(char* filename) {
+	SD_CS_LOW();
 	fresult = f_close (&file);
+	SD_CS_HIGH();
 }
 
 void writeRpmToFile(uint32_t rpmSens, uint32_t rpmEng) {
@@ -93,7 +105,9 @@ void writeRpmToFile(uint32_t rpmSens, uint32_t rpmEng) {
 	rpmSens = rpmSens * 5 * 60 / 20;
 	rpmEng = rpmSens;
 	int len = sprintf( buffer, "%d;%d;%d\n", time, rpmSens, rpmEng);
+	SD_CS_LOW();
 	fresult = f_write(&file, buffer, len, &bytes_written);
+	SD_CS_HIGH();
 	time+=2;
 }
 
@@ -149,6 +163,7 @@ uint32_t getNextNumber() {
 	FILINFO fno;
 	uint32_t nextNum = 0;
 
+	SD_CS_LOW();
 	fr = f_stat("measureNumber.txt", &fno);
 	if(fr==FR_OK) {
 		fresult = f_open(&file, "measureNumber.txt", FA_READ);
@@ -164,6 +179,7 @@ uint32_t getNextNumber() {
 	} else {
 		//Error handler
 	}
+	SD_CS_HIGH();
 	return nextNum;
 }
 char* createNewFilenameTS() {
@@ -190,7 +206,9 @@ char* createNewFilenameTS() {
 	//fresult = f_mount(&FatFs, "", 0);
 
 	while(1) {
+		SD_CS_LOW();
 		fr = f_stat(ret, &fno);
+		SD_CS_HIGH();
 		if(fr==FR_OK) {
 			//Change name
 			uint32_t len = strlen(ret);
@@ -236,10 +254,12 @@ char* createNewFilenameTS() {
 }
 
 void createNewFilename(char *filename) {
+	SD_CS_LOW();
 	fresult = f_open(&file, filename, FA_OPEN_ALWAYS | FA_WRITE);
 	int len = sprintf( buffer, "time;rpm_wheel;rpm_engine\n");
 	fresult = f_write(&file, buffer, len, &bytes_written);
 	fresult = f_close (&file);
+	SD_CS_HIGH();
 }
 /* USER CODE END PFP */
 
@@ -276,17 +296,21 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_SPI1_Init();
   MX_RTC_Init();
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
+  CANSPI_Initialize();
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, GPIO_PIN_RESET); //CS for SD
+  SD_CS_LOW();
+  //HAL_GPIO_WritePin(GPIOF, GPIO_PIN_14, GPIO_PIN_RESET); //CS for SD
   fresult = f_mount(&FatFs, "", 0);
+  SD_CS_HIGH();
   /*
    * fresult = f_mount(&FatFs, "", 0);
   fresult = f_open(&file, "test.txt", FA_OPEN_ALWAYS | FA_WRITE);
@@ -463,6 +487,7 @@ static void MX_TIM4_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_IC_InitTypeDef sConfigIC = {0};
 
   /* USER CODE BEGIN TIM4_Init 1 */
 
@@ -482,15 +507,43 @@ static void MX_TIM4_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_IC_Init(&htim4) != HAL_OK)
+  {
+    Error_Handler();
+  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_FALLING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+  sConfigIC.ICFilter = 0;
+  if (HAL_TIM_IC_ConfigChannel(&htim4, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE BEGIN TIM4_Init 2 */
 
   /* USER CODE END TIM4_Init 2 */
+
+}
+
+/** 
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void) 
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
 
 }
 
@@ -517,6 +570,9 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(SD_CS_GPIO_Port, SD_CS_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(CAN_CS_GPIO_Port, CAN_CS_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(USB_PowerSwitchOn_GPIO_Port, USB_PowerSwitchOn_Pin, GPIO_PIN_RESET);
@@ -578,6 +634,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF7_USART3;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : CAN_CS_Pin */
+  GPIO_InitStruct.Pin = CAN_CS_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(CAN_CS_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : USB_PowerSwitchOn_Pin */
   GPIO_InitStruct.Pin = USB_PowerSwitchOn_Pin;
