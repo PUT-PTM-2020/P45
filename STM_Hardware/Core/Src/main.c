@@ -74,6 +74,18 @@ uint32_t time = 0;
 
 uCAN_MSG txMessage;
 uCAN_MSG rxMessage;
+
+typedef struct  {
+   int rpm;
+   int vcar;
+} CANReply;
+
+CANReply canRpl;
+canRpl.rpm =
+{
+		.rpm = 0;
+		.vcar = 0;
+};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -155,6 +167,60 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
 		}
 	}
+}
+
+/*
+ * ; Speed
+[transmit1]                  ; Transmit message
+destination = 0       	     ; 0 = None, 1 = Logger, 2 = Interface, 3 = Both
+period = 200                 ; Period in ms (DEC, 10 ms resolution)
+delay = 0                    ; Delay in ms (DEC, 10 ms resolution)
+extendedID = false           ; Use extended 29 bit message IDs (2.0B)
+msgID = 7DF                  ; Transmit message ID (HEX)
+msgData = {02010D5555555555} ; Message data (HEX)
+
+
+; RPM
+[transmit2]            	     ; Transmit message
+destination = 0              ; 0 = None, 1 = Logger, 2 = Interface, 3 = Both
+period = 200                 ; Period in ms (DEC, 10 ms resolution)
+delay = 10                   ; Delay in ms (DEC, 10 ms resolution)
+extendedID = false           ; Use extended 29 bit message IDs (2.0B)
+msgID = 7DF                  ; Transmit message ID (HEX)
+msgData = {02010C5555555555} ; Message data (HEX)
+
+SOURCE https://www.csselectronics.com/screen/page/obd-ii-pid-examples/language/en
+ */
+
+void getRPMByOBD_Req() {
+	txMessage.frame.idType = dSTANDARD_CAN_MSG_ID_2_0B; //??
+	txMessage.frame.id = 0x7DF; //Request ID
+	txMessage.frame.dlc = 8; //??
+	txMessage.frame.data0 = 0x02;
+	txMessage.frame.data1 = 0x01;
+	txMessage.frame.data2 = 0x0C;
+	txMessage.frame.data3 = 0x55;
+	txMessage.frame.data4 = 0x55;
+	txMessage.frame.data5 = 0x55;
+	txMessage.frame.data6 = 0x55;
+	txMessage.frame.data7 = 0x55;
+	CANSPI_Transmit(&txMessage);
+}
+
+int getReplyByOBD() { //TODO: return value
+	int val = 0;
+	if(CANSPI_Receive(&rxMessage))
+	{
+	  if(rxMessage.frame.id==0x7E8) {
+		  if(rxMessage.frame.data0==0x03 && rxMessage.frame.data1==0x41 && rxMessage.frame.data2==0x0C) { //Reply 03,41,0C - Reply RPM
+			  val = (rxMessage.frame.data3*256 + rxMessage.frame.data4)/4;
+		  }
+		  if(rxMessage.frame.data0==0x02 && rxMessage.frame.data1==0x41 && rxMessage.frame.data2==0x0D) { //Reply 02,41,0D - Reply SPEED
+			  val = rxMessage.frame.data3;
+		  }
+	  }
+	}
+	return val;
 }
 
 
