@@ -70,22 +70,15 @@ uint8_t fileOpen = 0;
 
 uint32_t rpmCounter = 0;
 
+uint8_t getOBD = 0;
+
 uint32_t time = 0;
 
 uCAN_MSG txMessage;
 uCAN_MSG rxMessage;
 
-typedef struct  {
-   int rpm;
-   int vcar;
-} CANReply;
+uint32_t canReply[2]; // 0 - RPM, 1 - SPEED
 
-CANReply canRpl;
-canRpl.rpm =
-{
-		.rpm = 0;
-		.vcar = 0;
-};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -112,11 +105,10 @@ void closeFileToWriteRPM(char* filename) {
 	SD_CS_HIGH();
 }
 
-void writeRpmToFile(uint32_t rpmSens, uint32_t rpmEng) {
+void writeRpmToFile(uint32_t impSens, uint32_t rpmEng, uint32_t vehSpeed) {
 	//uint32_t timestamp = time;
-	rpmSens = rpmSens * 5 * 60 / 20;
-	rpmEng = rpmSens;
-	int len = sprintf( buffer, "%d;%d;%d\n", time, rpmSens, rpmEng);
+	impSens = impSens * 5 * 60 / 20;
+	uint32_t len = sprintf( buffer, "%d;%d;%d;%d\n", time, impSens, rpmEng, vehSpeed);
 	SD_CS_LOW();
 	fresult = f_write(&file, buffer, len, &bytes_written);
 	SD_CS_HIGH();
@@ -136,6 +128,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
 				startMeasure=1;
 				rpmCounter = 0;
+				getOBD = 0;
 				time = 0;
 			} else {
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_14, GPIO_PIN_SET);
@@ -163,8 +156,9 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 		if(startMeasure==1) {
 			uint32_t rpmTemp = rpmCounter;
 			rpmCounter = 0;
-			writeRpmToFile(rpmTemp, rpmTemp);
+			writeRpmToFile(rpmTemp, canReply[0], canReply[1]);
 			HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
+			getOBD = 0;
 		}
 	}
 }
@@ -193,6 +187,7 @@ SOURCE https://www.csselectronics.com/screen/page/obd-ii-pid-examples/language/e
  */
 
 void getRPMByOBD_Req() {
+	canReply[0] = 0; // Reset RPM
 	txMessage.frame.idType = dSTANDARD_CAN_MSG_ID_2_0B; //??
 	txMessage.frame.id = 0x7DF; //Request ID
 	txMessage.frame.dlc = 8; //??
@@ -207,20 +202,54 @@ void getRPMByOBD_Req() {
 	CANSPI_Transmit(&txMessage);
 }
 
-int getReplyByOBD() { //TODO: return value
-	int val = 0;
+void getSPEEDByOBD_Req() {
+	canReply[1] = 0; // Reset SPEED
+	txMessage.frame.idType = dSTANDARD_CAN_MSG_ID_2_0B; //??
+	txMessage.frame.id = 0x7DF; //Request ID
+	txMessage.frame.dlc = 8; //??
+	txMessage.frame.data0 = 0x02;
+	txMessage.frame.data1 = 0x01;
+	txMessage.frame.data2 = 0x0D;
+	txMessage.frame.data3 = 0x55;
+	txMessage.frame.data4 = 0x55;
+	txMessage.frame.data5 = 0x55;
+	txMessage.frame.data6 = 0x55;
+	txMessage.frame.data7 = 0x55;
+	CANSPI_Transmit(&txMessage);
+}
+
+void getReplyByOBD_Cont() {
+	bool getRPM = false;
+	bool getSPEED = false;
+	if(canReply[0]==0) {
+		getRPM = true;
+	}
+	if(canReply[1]==0) {
+		getSPEED = true;
+	}
+	while(1) {
+		getReplyByOBD();
+		if(getRPM&&canReply[0]!=0) {
+			break;
+		}
+		if(getSPEED&&canReply[1]!=0) {
+			break;
+		}
+	}
+}
+
+void getReplyByOBD() { //TODO: return value
 	if(CANSPI_Receive(&rxMessage))
 	{
 	  if(rxMessage.frame.id==0x7E8) {
 		  if(rxMessage.frame.data0==0x03 && rxMessage.frame.data1==0x41 && rxMessage.frame.data2==0x0C) { //Reply 03,41,0C - Reply RPM
-			  val = (rxMessage.frame.data3*256 + rxMessage.frame.data4)/4;
+			  canReply[0] = (rxMessage.frame.data3*256 + rxMessage.frame.data4)/4;
 		  }
 		  if(rxMessage.frame.data0==0x02 && rxMessage.frame.data1==0x41 && rxMessage.frame.data2==0x0D) { //Reply 02,41,0D - Reply SPEED
-			  val = rxMessage.frame.data3;
+			  canReply[1] = rxMessage.frame.data3;
 		  }
 	  }
 	}
-	return val;
 }
 
 
@@ -238,7 +267,7 @@ uint32_t getNextNumber() {
 		fresult = f_close(&file);
 	} else if(fr==FR_NO_FILE) {
 	    fresult = f_open(&file, "measureNumber.txt", FA_OPEN_ALWAYS | FA_WRITE);
-	    int len = sprintf( buffer, "1");
+	    uint32_t len = sprintf( buffer, "1");
 	    fresult = f_write(&file, buffer, len, &bytes_written);
 	    nextNum = 1;
 	    fresult = f_close (&file);
@@ -322,7 +351,7 @@ char* createNewFilenameTS() {
 void createNewFilename(char *filename) {
 	SD_CS_LOW();
 	fresult = f_open(&file, filename, FA_OPEN_ALWAYS | FA_WRITE);
-	int len = sprintf( buffer, "time;rpm_wheel;rpm_engine\n");
+	uint32_t len = sprintf( buffer, "time;rpm_wheel;rpm_engine\n");
 	fresult = f_write(&file, buffer, len, &bytes_written);
 	fresult = f_close (&file);
 	SD_CS_HIGH();
@@ -403,9 +432,14 @@ int main(void)
   {
 	  if(startMeasure==1) {
 		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
-		  HAL_Delay(100);
+		  if(getOBD==0) {
+			  getRPMByOBD_Req();
+			  getReplyByOBD_Cont();
+			  getSPEEDByOBD_Req();
+			  getReplyByOBD_Cont();
+			  getOBD = 1;
+		  }
 		  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
-		  HAL_Delay(100);
 	  }
 
 
